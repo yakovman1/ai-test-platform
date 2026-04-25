@@ -1,0 +1,7 @@
+{$APP_DOMAIN} {
+  encode zstd gzip
+  tls {$LETSENCRYPT_EMAIL}
+
+  reverse_proxy /api/* backend:8000
+  reverse_proxy frontend:80
+}
