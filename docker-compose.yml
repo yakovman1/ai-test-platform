@@ -8,6 +8,7 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
       LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+      UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-20}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

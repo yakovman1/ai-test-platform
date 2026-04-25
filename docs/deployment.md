@@ -45,9 +45,10 @@ Update every placeholder value before deployment:
 - `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` configure the database container.
 - `DATABASE_URL` must use the Compose service host `postgres`, for example `postgresql+psycopg://USER:PASSWORD@postgres:5432/DB`.
 - `JWT_SECRET`, `INITIAL_USER_PASSWORD`, and `NVIDIA_API_KEY` must be replaced with real private values.
+- `UPLOAD_MAX_MB` controls both backend upload validation and Caddy's request body limit before API traffic reaches the backend.
 - `BACKEND_CORS_ORIGINS` should include the public HTTPS origin, for example `https://ai.example.com`.
 
-Docker Compose automatically reads `.env` for variable substitution in `docker-compose.yml`. The backend service also receives `.env` through `env_file` when the file is present, while Caddy receives the domain and Let's Encrypt email through its container environment.
+Docker Compose automatically reads `.env` for variable substitution in `docker-compose.yml`. The backend service also receives `.env` through `env_file` when the file is present, while Caddy receives the domain, Let's Encrypt email, and upload limit through its container environment.
 
 ## First Deploy
 
@@ -107,7 +108,9 @@ Check container health and restart state:
 docker compose ps
 ```
 
-## Postgres Backup
+## Backups
+
+Back up the database and uploaded files together so document metadata and files stay in sync.
 
 Create a timestamped database backup from the running Postgres container:
 
@@ -116,14 +119,35 @@ mkdir -p backups
 docker compose exec postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "backups/postgres-$(date +%Y%m%d-%H%M%S).sql"
 ```
 
-Copy backups off the VPS regularly. The Postgres data volume keeps live data, but it is not a substitute for external backups.
+Set the Compose project name used in Docker volume names. If you set `COMPOSE_PROJECT_NAME` in your shell, reuse that value here:
 
-## Postgres Restore
+```bash
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}"
+```
+
+Create a timestamped archive of the `uploaded_files` volume:
+
+```bash
+docker run --rm -v "${PROJECT_NAME}_uploaded_files:/data:ro" -v "$PWD/backups:/backup" alpine sh -c 'cd /data && tar czf "/backup/uploaded-files-$(date +%Y%m%d-%H%M%S).tar.gz" .'
+```
+
+Caddy stores ACME account and certificate state in `caddy_data` and runtime config in `caddy_config`. These volumes can be backed up with the same pattern if you want faster recovery:
+
+```bash
+docker run --rm -v "${PROJECT_NAME}_caddy_data:/data:ro" -v "$PWD/backups:/backup" alpine sh -c 'cd /data && tar czf "/backup/caddy-data-$(date +%Y%m%d-%H%M%S).tar.gz" .'
+docker run --rm -v "${PROJECT_NAME}_caddy_config:/data:ro" -v "$PWD/backups:/backup" alpine sh -c 'cd /data && tar czf "/backup/caddy-config-$(date +%Y%m%d-%H%M%S).tar.gz" .'
+```
+
+If Caddy volumes are lost, Caddy can reissue certificates and recreate account state as long as DNS still points to the VPS and ports `80` and `443` are reachable. Expect a short HTTPS outage during reissuance, and avoid repeated failed restarts because Let's Encrypt rate limits failed validation attempts.
+
+Copy backups off the VPS regularly. Docker named volumes keep live data, but they are not a substitute for external backups.
+
+## Restore
 
 Stop application traffic before restoring when possible:
 
 ```bash
-docker compose stop backend
+docker compose stop backend caddy
 ```
 
 Restore a SQL backup into the running Postgres container:
@@ -132,10 +156,24 @@ Restore a SQL backup into the running Postgres container:
 docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"' < backups/postgres-YYYYMMDD-HHMMSS.sql
 ```
 
-Start the backend again:
+Restore uploaded files into the `uploaded_files` volume:
 
 ```bash
-docker compose up -d backend
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}"
+docker run --rm -v "${PROJECT_NAME}_uploaded_files:/data" -v "$PWD/backups:/backup:ro" alpine sh -c 'cd /data && tar xzf /backup/uploaded-files-YYYYMMDD-HHMMSS.tar.gz'
+```
+
+If you backed up Caddy volumes and want to restore the previous ACME state, restore them before starting Caddy:
+
+```bash
+docker run --rm -v "${PROJECT_NAME}_caddy_data:/data" -v "$PWD/backups:/backup:ro" alpine sh -c 'cd /data && tar xzf /backup/caddy-data-YYYYMMDD-HHMMSS.tar.gz'
+docker run --rm -v "${PROJECT_NAME}_caddy_config:/data" -v "$PWD/backups:/backup:ro" alpine sh -c 'cd /data && tar xzf /backup/caddy-config-YYYYMMDD-HHMMSS.tar.gz'
+```
+
+Start services again:
+
+```bash
+docker compose up -d backend caddy
 docker compose ps
 ```
 

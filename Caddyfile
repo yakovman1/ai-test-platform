@@ -1,7 +1,15 @@
 {$APP_DOMAIN} {
-  encode zstd gzip
-  tls {$LETSENCRYPT_EMAIL}
+	encode zstd gzip
+	tls {$LETSENCRYPT_EMAIL}
 
-  reverse_proxy /api/* backend:8000
-  reverse_proxy frontend:80
+	handle /api/* {
+		request_body {
+			max_size {$UPLOAD_MAX_MB}MB
+		}
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
 }
