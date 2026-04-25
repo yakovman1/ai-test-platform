@@ -12,9 +12,10 @@ from app.core.security import AUTH_COOKIE_NAME, create_access_token
 from app.db import session as session_module
 from app.db.session import get_db
 from app.main import create_app
-from app.models.document import Document, DocumentChunk, DocumentStatus
+from app.models.document import Document, DocumentChunk, DocumentEmbedding, DocumentStatus
 from app.models.user import User
 from app.services.document_parser import UnsupportedDocumentType, extract_text
+from app.services.indexing import index_document
 
 
 @pytest.fixture
@@ -30,6 +31,7 @@ def configured_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NVIDIA_LLM_MODEL", "gemma")
     monkeypatch.setenv("UPLOAD_MAX_MB", "1")
     monkeypatch.setenv("BACKEND_CORS_ORIGINS", "")
+    monkeypatch.setattr("app.services.indexing._default_embedding_provider", lambda text: [0.1] * 1024)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -50,6 +52,40 @@ def test_extract_text_rejects_unknown_extension() -> None:
         assert "Unsupported file type" in str(exc)
     else:
         raise AssertionError("UnsupportedDocumentType was not raised")
+
+
+def test_index_document_stores_embeddings_with_injected_provider(configured_settings: None) -> None:
+    _client, session_local = _client_with_user()
+    embedded_texts: list[str] = []
+
+    with session_local() as db:
+        document = Document(user_id=1, filename="notes.txt", content_type="text/plain")
+        db.add(document)
+        db.commit()
+        document_id = document.id
+
+    def fake_embed(text: str) -> list[float]:
+        embedded_texts.append(text)
+        return [0.1] * 1024
+
+    index_document(document_id, "notes.txt", b"alpha " * 300, embedding_provider=fake_embed)
+
+    with session_local() as db:
+        document = db.get(Document, document_id)
+        assert document is not None
+        chunks = db.scalars(
+            select(DocumentChunk)
+            .where(DocumentChunk.document_id == document_id)
+            .order_by(DocumentChunk.chunk_index)
+        ).all()
+        embeddings = db.scalars(
+            select(DocumentEmbedding).join(DocumentChunk).where(DocumentChunk.document_id == document_id)
+        ).all()
+
+    assert document.status == DocumentStatus.READY
+    assert len(chunks) > 1
+    assert len(embeddings) == len(chunks)
+    assert embedded_texts == [chunk.content for chunk in chunks]
 
 
 def test_upload_document_requires_authentication(configured_settings: None) -> None:
@@ -137,6 +173,7 @@ def _client_with_user() -> tuple[TestClient, sessionmaker[Session]]:
     User.__table__.create(bind=engine)
     Document.__table__.create(bind=engine)
     DocumentChunk.__table__.create(bind=engine)
+    DocumentEmbedding.__table__.create(bind=engine)
 
     password_hash = bcrypt.hashpw(b"correct-password", bcrypt.gensalt()).decode("utf-8")
     with testing_session_local() as db:
