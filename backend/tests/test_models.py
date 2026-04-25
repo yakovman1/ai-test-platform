@@ -33,6 +33,13 @@ def test_model_tables_expose_durable_relationship_metadata() -> None:
     assert _foreign_key_ondelete(DocumentEmbedding, "chunk_id") == "CASCADE"
 
 
+def test_chat_session_messages_have_deterministic_ordering() -> None:
+    assert tuple(ChatSession.messages.property.order_by) == (
+        ChatMessage.created_at,
+        ChatMessage.id,
+    )
+
+
 def _foreign_key_ondelete(model: type, column_name: str) -> str | None:
     [foreign_key] = model.__table__.c[column_name].foreign_keys
     return foreign_key.ondelete

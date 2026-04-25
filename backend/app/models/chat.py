@@ -29,6 +29,7 @@ class ChatSession(Base):
     messages: Mapped[list[ChatMessage]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
+        order_by=lambda: (ChatMessage.created_at, ChatMessage.id),
     )
 
 
