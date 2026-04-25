@@ -12,6 +12,7 @@ from app.core.security import AUTH_COOKIE_NAME, create_access_token
 from app.db.session import get_db
 from app.main import create_app
 from app.models.chat import ChatMessage, ChatRole, ChatSession
+from app.models.document import Document, DocumentChunk, DocumentEmbedding, DocumentStatus
 from app.models.user import User
 from app.schemas.chat import ChatRequest
 from app.services.rag import build_no_context_response
@@ -38,7 +39,12 @@ class FakeNvidiaClient:
     def __init__(self, response: str = "Assistant answer", failure: Exception | None = None) -> None:
         self.response = response
         self.failure = failure
+        self.embedded_texts: list[str] = []
         self.messages: list[list[dict[str, str]]] = []
+
+    def embed(self, text: str) -> list[float]:
+        self.embedded_texts.append(text)
+        return [1.0] + [0.0] * 1023
 
     def chat(self, messages: list[dict[str, str]]) -> str:
         self.messages.append(messages)
@@ -197,6 +203,42 @@ def test_send_rag_message_without_context_persists_grounded_response() -> None:
     ]
 
 
+def test_send_rag_message_uses_ready_document_context() -> None:
+    client, session_local, fake_client = _client_with_user(client_response="Grounded answer")
+    token = create_access_token("1")
+    session_id = _create_session(session_local, user_id=1)
+    _create_ready_document_chunk(session_local, user_id=1)
+
+    response = client.post(
+        f"/api/chats/{session_id}/messages",
+        headers={"cookie": f"{AUTH_COOKIE_NAME}={token}"},
+        json={"message": "What is the policy?", "mode": "rag", "style": "expert"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"]["content"] == "Grounded answer"
+    assert response.json()["message"]["source_summary"] == "handbook.md"
+    assert fake_client.embedded_texts == ["What is the policy?"]
+    assert fake_client.messages == [
+        [
+            {
+                "role": "system",
+                "content": (
+                    "Answer using only the provided company document context. "
+                    "Use the requested style: expert."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Context:\nSource: handbook.md\nTravel requires approval."
+                    "\n\nQuestion:\nWhat is the policy?"
+                ),
+            },
+        ]
+    ]
+
+
 def test_send_message_rejects_chat_owned_by_another_user() -> None:
     client, session_local, _fake_client = _client_with_user()
     token = create_access_token("1")
@@ -234,6 +276,9 @@ def _client_with_user(
     User.__table__.create(bind=engine)
     ChatSession.__table__.create(bind=engine)
     ChatMessage.__table__.create(bind=engine)
+    Document.__table__.create(bind=engine)
+    DocumentChunk.__table__.create(bind=engine)
+    DocumentEmbedding.__table__.create(bind=engine)
 
     with testing_session_local() as db:
         db.add(User(username="tester", password_hash="hash"))
@@ -264,3 +309,24 @@ def _create_session(session_local: sessionmaker[Session], *, user_id: int) -> in
         db.add(session)
         db.commit()
         return session.id
+
+
+def _create_ready_document_chunk(session_local: sessionmaker[Session], *, user_id: int) -> None:
+    with session_local() as db:
+        document = Document(
+            user_id=user_id,
+            filename="handbook.md",
+            content_type="text/markdown",
+            status=DocumentStatus.READY,
+        )
+        db.add(document)
+        db.flush()
+        chunk = DocumentChunk(
+            document_id=document.id,
+            chunk_index=0,
+            content="Travel requires approval.",
+        )
+        db.add(chunk)
+        db.flush()
+        db.add(DocumentEmbedding(chunk_id=chunk.id, embedding=[1.0] + [0.0] * 1023))
+        db.commit()
