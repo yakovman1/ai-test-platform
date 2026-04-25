@@ -9,7 +9,7 @@ from app.db.session import get_db
 from app.models.chat import ChatSession
 from app.models.user import User
 from app.schemas.chat import ChatRequest, ChatResponse, ChatSessionResponse
-from app.services.chat_service import send_message
+from app.services.chat_service import ChatGenerationError, send_message
 from app.services.nvidia_client import NvidiaClient
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
@@ -66,5 +66,10 @@ def create_chat_message(
         message = send_message(db, session, payload.message, payload.mode, payload.style, client)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except ChatGenerationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Chat response failed",
+        ) from exc
 
     return ChatResponse(message=message)

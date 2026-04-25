@@ -8,11 +8,15 @@ from app.models.chat import ChatMessage, ChatRole, ChatSession
 from app.services.rag import RetrievedChunk, build_no_context_response, build_rag_messages
 
 SUPPORTED_MODES = {"normal", "rag"}
-SUPPORTED_STYLES = {"concise", "detailed"}
+SUPPORTED_STYLES = {"concise", "detailed", "expert"}
 
 
 class ChatClient(Protocol):
     def chat(self, messages: list[dict[str, str]]) -> str: ...
+
+
+class ChatGenerationError(Exception):
+    pass
 
 
 def send_message(
@@ -28,14 +32,19 @@ def send_message(
 
     user_message = ChatMessage(session=session, role=ChatRole.USER, content=message)
     db.add(user_message)
+    db.commit()
 
     chunks = _retrieve_chunks()
-    if mode == "rag":
-        assistant_content = _build_rag_response(message, style, chunks, client)
-        source_summary = _source_summary(chunks)
-    else:
-        assistant_content = client.chat(_build_normal_messages(message, style))
-        source_summary = None
+    try:
+        if mode == "rag":
+            assistant_content = _build_rag_response(message, style, chunks, client)
+            source_summary = _source_summary(chunks)
+        else:
+            assistant_content = client.chat(_build_normal_messages(message, style))
+            source_summary = None
+    except Exception as exc:
+        db.rollback()
+        raise ChatGenerationError("Chat response failed") from exc
 
     assistant_message = ChatMessage(
         session=session,
@@ -50,10 +59,11 @@ def send_message(
 
 
 def _build_normal_messages(message: str, style: str) -> list[dict[str, str]]:
+    article = "an" if style == "expert" else "a"
     return [
         {
             "role": "system",
-            "content": f"Respond in a {style} style for an internal company assistant.",
+            "content": f"Respond in {article} {style} style for an internal company assistant.",
         },
         {"role": "user", "content": message},
     ]

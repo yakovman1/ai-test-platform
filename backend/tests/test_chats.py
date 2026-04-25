@@ -35,12 +35,15 @@ def configured_settings(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
 
 
 class FakeNvidiaClient:
-    def __init__(self, response: str = "Assistant answer") -> None:
+    def __init__(self, response: str = "Assistant answer", failure: Exception | None = None) -> None:
         self.response = response
+        self.failure = failure
         self.messages: list[list[dict[str, str]]] = []
 
     def chat(self, messages: list[dict[str, str]]) -> str:
         self.messages.append(messages)
+        if self.failure is not None:
+            raise self.failure
         return self.response
 
 
@@ -118,6 +121,54 @@ def test_send_normal_message_persists_messages_and_uses_fake_client() -> None:
     ]
 
 
+def test_send_normal_message_accepts_expert_style() -> None:
+    client, _session_local, fake_client = _client_with_user(client_response="Expert answer")
+    token = create_access_token("1")
+    session_id = _create_session(_session_local, user_id=1)
+
+    response = client.post(
+        f"/api/chats/{session_id}/messages",
+        headers={"cookie": f"{AUTH_COOKIE_NAME}={token}"},
+        json={"message": "Explain this architecture", "mode": "normal", "style": "expert"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"]["content"] == "Expert answer"
+    assert fake_client.messages[0][0] == {
+        "role": "system",
+        "content": "Respond in an expert style for an internal company assistant.",
+    }
+
+
+def test_send_normal_message_failure_returns_safe_error_and_keeps_user_message() -> None:
+    client, session_local, _fake_client = _client_with_user(
+        client_failure=RuntimeError("provider unavailable"),
+        raise_server_exceptions=False,
+    )
+    token = create_access_token("1")
+    session_id = _create_session(session_local, user_id=1)
+
+    response = client.post(
+        f"/api/chats/{session_id}/messages",
+        headers={"cookie": f"{AUTH_COOKIE_NAME}={token}"},
+        json={"message": "Will this persist?", "mode": "normal"},
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Chat response failed"}
+
+    with session_local() as db:
+        messages = db.scalars(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at, ChatMessage.id)
+        ).all()
+
+    assert [(message.role, message.content) for message in messages] == [
+        (ChatRole.USER, "Will this persist?"),
+    ]
+
+
 def test_send_rag_message_without_context_persists_grounded_response() -> None:
     client, session_local, fake_client = _client_with_user()
     token = create_access_token("1")
@@ -171,6 +222,8 @@ def test_send_message_rejects_chat_owned_by_another_user() -> None:
 def _client_with_user(
     *,
     client_response: str = "Assistant answer",
+    client_failure: Exception | None = None,
+    raise_server_exceptions: bool = True,
 ) -> tuple[TestClient, sessionmaker[Session], FakeNvidiaClient]:
     engine = create_engine(
         "sqlite://",
@@ -187,7 +240,7 @@ def _client_with_user(
         db.commit()
 
     app = create_app()
-    fake_client = FakeNvidiaClient(client_response)
+    fake_client = FakeNvidiaClient(client_response, client_failure)
 
     def override_get_db() -> Generator[Session]:
         db = testing_session_local()
@@ -198,7 +251,11 @@ def _client_with_user(
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_nvidia_client] = lambda: fake_client
-    return TestClient(app), testing_session_local, fake_client
+    return (
+        TestClient(app, raise_server_exceptions=raise_server_exceptions),
+        testing_session_local,
+        fake_client,
+    )
 
 
 def _create_session(session_local: sessionmaker[Session], *, user_id: int) -> int:
