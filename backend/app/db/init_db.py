@@ -15,6 +15,7 @@ def init_db() -> None:
 
     with engine.begin() as connection:
         connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # MVP bootstrap: create mapped tables at startup until Alembic migrations are introduced.
         Base.metadata.create_all(
             bind=connection,
             tables=[

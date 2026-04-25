@@ -12,6 +12,7 @@ from app.api.deps import get_current_user
 from app.core.config import get_settings
 from app.core.security import AUTH_COOKIE_NAME, create_access_token
 from app.db.session import get_db
+from app import main as main_module
 from app.main import create_app
 from app.models import chat as _chat  # noqa: F401
 from app.models import document as _document  # noqa: F401
@@ -94,6 +95,45 @@ def test_current_user_dependency_resolves_cookie(configured_settings: None) -> N
 
     assert response.status_code == 200
     assert response.json() == {"username": "tester"}
+
+
+def test_app_startup_initializes_database(
+    configured_settings: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_calls: list[str] = []
+
+    def fake_init_db() -> None:
+        init_calls.append("called")
+
+    monkeypatch.setattr(main_module, "init_db", fake_init_db, raising=False)
+
+    with TestClient(create_app()):
+        pass
+
+    assert init_calls == ["called"]
+
+
+def test_cors_allows_configured_cookie_origins(
+    configured_settings: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BACKEND_CORS_ORIGINS", "http://localhost:5173")
+    get_settings.cache_clear()
+    monkeypatch.setattr(main_module, "init_db", lambda: None, raising=False)
+
+    with TestClient(create_app()) as client:
+        response = client.options(
+            "/api/auth/login",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert response.headers["access-control-allow-credentials"] == "true"
 
 
 def _client_with_user(*, password: str, include_protected_route: bool = False) -> TestClient:
