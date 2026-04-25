@@ -1,16 +1,12 @@
-import bcrypt
 from sqlalchemy import select, text
 
 from app.core.config import get_settings
+from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import SessionLocal, get_engine
 from app.models.chat import ChatMessage, ChatSession
 from app.models.document import Document, DocumentChunk, DocumentEmbedding
 from app.models.user import User
-
-
-def _hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def init_db() -> None:
@@ -41,7 +37,7 @@ def init_db() -> None:
         db.add(
             User(
                 username=settings.initial_user_username,
-                password_hash=_hash_password(settings.initial_user_password),
+                password_hash=hash_password(settings.initial_user_password),
             )
         )
         db.commit()
