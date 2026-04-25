@@ -1,0 +1,35 @@
+[project]
+name = "ai-test-platform-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic",
+  "bcrypt",
+  "fastapi",
+  "httpx",
+  "passlib[bcrypt]",
+  "pgvector",
+  "psycopg[binary]",
+  "pydantic-settings",
+  "python-docx",
+  "python-jose[cryptography]",
+  "python-multipart",
+  "pypdf",
+  "sqlalchemy",
+  "uvicorn[standard]",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "ruff",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
