@@ -38,6 +38,8 @@ cp .env.example .env
 nano .env
 ```
 
+Do this before running `docker compose up`. Compose reads `.env` for variable substitution in `docker-compose.yml`; without it, required variables such as `POSTGRES_PASSWORD` are not available and Postgres cannot initialize.
+
 Update every placeholder value before deployment:
 
 - `APP_DOMAIN` must be the public domain that points to the VPS.
@@ -48,7 +50,7 @@ Update every placeholder value before deployment:
 - `UPLOAD_MAX_MB` controls both backend upload validation and Caddy's request body limit before API traffic reaches the backend.
 - `BACKEND_CORS_ORIGINS` should include the public HTTPS origin, for example `https://ai.example.com`.
 
-Docker Compose automatically reads `.env` for variable substitution in `docker-compose.yml`. The backend service also receives `.env` through `env_file` when the file is present, while Caddy receives the domain, Let's Encrypt email, and upload limit through its container environment.
+Docker Compose automatically reads `.env` for variable substitution in `docker-compose.yml`. The backend, Caddy, and Postgres services receive their required runtime settings from those Compose variables. The Compose file uses required-variable checks so missing `.env` values fail fast with a clear message instead of starting partially configured containers.
 
 ## First Deploy
 
@@ -206,6 +208,23 @@ docker compose logs --tail=100 backend
 ```
 
 Confirm `DATABASE_URL` uses `postgres` as the host and matches the database name, user, and password in `.env`.
+
+If Postgres logs show `Database is uninitialized and superuser password is not specified`, `.env` was missing or `POSTGRES_PASSWORD` was empty when the stack was started. Create `.env`, set `POSTGRES_PASSWORD`, and restart the stack:
+
+```bash
+cp .env.example .env
+nano .env
+docker compose down
+docker compose up -d --build
+docker compose ps
+```
+
+If the failed first start created an empty `postgres_data` volume and Postgres still refuses to initialize after `.env` is fixed, remove only the failed local database volume before starting again. Do not do this on a real deployment with data you need to keep:
+
+```bash
+docker compose down -v
+docker compose up -d --build
+```
 
 ### NVIDIA API Failures
 

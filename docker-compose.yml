@@ -6,8 +6,8 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      APP_DOMAIN: ${APP_DOMAIN}
-      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:?Set LETSENCRYPT_EMAIL in .env}
       UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-20}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -24,9 +24,19 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:?Set LETSENCRYPT_EMAIL in .env}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      INITIAL_USER_USERNAME: ${INITIAL_USER_USERNAME:?Set INITIAL_USER_USERNAME in .env}
+      INITIAL_USER_PASSWORD: ${INITIAL_USER_PASSWORD:?Set INITIAL_USER_PASSWORD in .env}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:?Set NVIDIA_API_KEY in .env}
+      NVIDIA_EMBEDDING_MODEL: ${NVIDIA_EMBEDDING_MODEL:?Set NVIDIA_EMBEDDING_MODEL in .env}
+      NVIDIA_LLM_MODEL: ${NVIDIA_LLM_MODEL:?Set NVIDIA_LLM_MODEL in .env}
+      UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-20}
+      RAG_TOP_K: ${RAG_TOP_K:-5}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:?Set BACKEND_CORS_ORIGINS in .env}
     volumes:
       - uploaded_files:/app/uploads
     depends_on:
@@ -37,9 +47,9 @@ services:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
