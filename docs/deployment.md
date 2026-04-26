@@ -222,7 +222,9 @@ docker compose ps
 If the failed first start created an empty `postgres_data` volume and Postgres still refuses to initialize after `.env` is fixed, remove only the failed local database volume before starting again. Do not do this on a real deployment with data you need to keep:
 
 ```bash
-docker compose down -v
+docker compose down
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}"
+docker volume rm "${PROJECT_NAME}_postgres_data"
 docker compose up -d --build
 ```
 
