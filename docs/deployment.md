@@ -246,3 +246,4 @@ After changing NVIDIA settings, recreate the backend container:
 ```bash
 docker compose up -d --force-recreate backend
 ```
+
