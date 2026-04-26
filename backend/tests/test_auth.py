@@ -78,7 +78,7 @@ def test_login_cookie_secure_flag_can_be_disabled_for_local_http(
     assert "Secure" not in response.headers["set-cookie"]
 
 
-def test_logout_clears_cookie() -> None:
+def test_logout_clears_cookie(configured_settings: None) -> None:
     client = TestClient(create_app())
 
     response = client.post("/api/auth/logout")

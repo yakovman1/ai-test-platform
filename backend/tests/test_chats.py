@@ -90,6 +90,27 @@ def test_create_and_list_chats_for_current_user() -> None:
     assert list_response.json() == [{"id": create_response.json()["id"], "title": "New chat"}]
 
 
+def test_list_chat_messages_for_owned_session() -> None:
+    client, session_local, _fake_client = _client_with_user()
+    token = create_access_token("1")
+    session_id = _create_session(session_local, user_id=1)
+    with session_local() as db:
+        db.add(ChatMessage(session_id=session_id, role=ChatRole.USER, content="Question"))
+        db.add(ChatMessage(session_id=session_id, role=ChatRole.ASSISTANT, content="Answer"))
+        db.commit()
+
+    response = client.get(
+        f"/api/chats/{session_id}/messages",
+        headers={"cookie": f"{AUTH_COOKIE_NAME}={token}"},
+    )
+
+    assert response.status_code == 200
+    assert [(message["role"], message["content"]) for message in response.json()] == [
+        (ChatRole.USER, "Question"),
+        (ChatRole.ASSISTANT, "Answer"),
+    ]
+
+
 def test_send_normal_message_persists_messages_and_uses_fake_client() -> None:
     client, session_local, fake_client = _client_with_user(client_response="Normal answer")
     token = create_access_token("1")

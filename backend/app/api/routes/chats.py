@@ -8,7 +8,7 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.chat import ChatSession
 from app.models.user import User
-from app.schemas.chat import ChatRequest, ChatResponse, ChatSessionResponse
+from app.schemas.chat import ChatMessageResponse, ChatRequest, ChatResponse, ChatSessionResponse
 from app.services.chat_service import ChatGenerationError, send_message
 from app.services.nvidia_client import NvidiaClient
 
@@ -43,6 +43,24 @@ def create_chat(
     db.commit()
     db.refresh(session)
     return session
+
+
+@router.get("/{session_id}/messages", response_model=list[ChatMessageResponse])
+def list_chat_messages(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list:
+    session = db.scalar(
+        select(ChatSession).where(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id,
+        )
+    )
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+
+    return list(session.messages)
 
 
 @router.post("/{session_id}/messages", response_model=ChatResponse)

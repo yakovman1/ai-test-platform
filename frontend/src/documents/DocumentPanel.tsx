@@ -1,28 +1,66 @@
-import type { CSSProperties } from "react";
+import { type ChangeEvent, type CSSProperties, useRef } from "react";
 
-const documents = [
-  { name: "Evaluation rubric.pdf", status: "Indexed" },
-  { name: "Product brief.md", status: "Processing" },
-];
+import type { DocumentSummary } from "../api/client";
 
-export function DocumentPanel() {
+type DocumentPanelProps = {
+  documents: DocumentSummary[];
+  isUploading: boolean;
+  onUpload: (file: File) => void;
+};
+
+export function DocumentPanel({ documents, isUploading, onUpload }: DocumentPanelProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) {
+      onUpload(file);
+      event.target.value = "";
+    }
+  }
+
   return (
     <section aria-labelledby="documents-heading" style={styles.section}>
       <div style={styles.header}>
         <h2 id="documents-heading">Documents</h2>
-        <button type="button">Upload</button>
+        <button
+          disabled={isUploading}
+          onClick={() => fileInputRef.current?.click()}
+          type="button"
+        >
+          {isUploading ? "Uploading..." : "Upload"}
+        </button>
+        <input
+          accept=".pdf,.docx,.txt,.md"
+          aria-label="Document file"
+          onChange={handleFileChange}
+          ref={fileInputRef}
+          style={styles.fileInput}
+          type="file"
+        />
       </div>
       <p style={styles.helperText}>Attach source material for grounded RAG chats.</p>
-      <ul style={styles.list}>
-        {documents.map((document) => (
-          <li key={document.name} style={styles.documentItem}>
-            <span>{document.name}</span>
-            <span style={styles.status}>{document.status}</span>
-          </li>
-        ))}
-      </ul>
+      {documents.length > 0 ? (
+        <ul style={styles.list}>
+          {documents.map((document) => (
+            <li key={document.id} style={styles.documentItem}>
+              <span>{document.filename}</span>
+              <span style={styles.status}>{formatStatus(document)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p style={styles.emptyText}>No documents uploaded yet.</p>
+      )}
     </section>
   );
+}
+
+function formatStatus(document: DocumentSummary) {
+  if (document.error_message) {
+    return `${document.status}: ${document.error_message}`;
+  }
+  return document.status;
 }
 
 const styles = {
@@ -60,5 +98,12 @@ const styles = {
     color: "#315a9b",
     fontSize: "0.82rem",
     fontWeight: 600,
+  },
+  emptyText: {
+    color: "#526070",
+    margin: 0,
+  },
+  fileInput: {
+    display: "none",
   },
 } satisfies Record<string, CSSProperties>;

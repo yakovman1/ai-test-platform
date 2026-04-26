@@ -1,17 +1,41 @@
 import { type CSSProperties, type FormEvent, useState } from "react";
 
-const messages = [
-  {
-    author: "Assistant",
-    text: "Welcome. Ask a question or switch to RAG to ground answers in uploaded documents.",
-  },
-];
+import type { ChatMessage } from "../api/client";
 
-export function ChatPanel() {
+export type ChatMode = "normal" | "rag";
+export type ResponseStyle = "concise" | "detailed" | "expert";
+
+type ChatPanelProps = {
+  error: string | null;
+  isSending: boolean;
+  messages: ChatMessage[];
+  mode: ChatMode;
+  onModeChange: (mode: ChatMode) => void;
+  onSend: (message: string) => Promise<void>;
+  onStyleChange: (style: ResponseStyle) => void;
+  style: ResponseStyle;
+};
+
+const welcomeMessage: ChatMessage = {
+  id: 0,
+  role: "assistant",
+  content: "Welcome. Ask a question or switch to RAG to ground answers in uploaded documents.",
+  source_summary: null,
+};
+
+export function ChatPanel({
+  error,
+  isSending,
+  messages,
+  mode,
+  onModeChange,
+  onSend,
+  onStyleChange,
+  style,
+}: ChatPanelProps) {
   const [draftMessage, setDraftMessage] = useState("");
-  const [visibleMessages, setVisibleMessages] = useState(messages);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const content = draftMessage.trim();
@@ -19,16 +43,11 @@ export function ChatPanel() {
       return;
     }
 
-    setVisibleMessages((currentMessages) => [
-      ...currentMessages,
-      { author: "You", text: content },
-      {
-        author: "Assistant",
-        text: "Message received. API chat integration is ready on the backend and will be wired into this composer next.",
-      },
-    ]);
+    await onSend(content);
     setDraftMessage("");
   }
+
+  const visibleMessages = messages.length > 0 ? messages : [welcomeMessage];
 
   return (
     <section aria-labelledby="chat-heading" style={styles.panel}>
@@ -38,25 +57,64 @@ export function ChatPanel() {
           <p style={styles.modelIndicator}>LLM: Gemma 4 via NVIDIA API</p>
         </div>
         <div aria-label="Chat mode" style={styles.buttonGroup}>
-          <button type="button">Normal chat</button>
-          <button type="button">RAG over documents</button>
+          <button
+            aria-pressed={mode === "normal"}
+            onClick={() => onModeChange("normal")}
+            type="button"
+          >
+            Normal chat
+          </button>
+          <button
+            aria-pressed={mode === "rag"}
+            onClick={() => onModeChange("rag")}
+            type="button"
+          >
+            RAG over documents
+          </button>
         </div>
       </header>
 
       <div aria-label="Response style" style={styles.buttonGroup}>
-        <button type="button">Concise</button>
-        <button type="button">Detailed</button>
-        <button type="button">Expert</button>
+        <button
+          aria-pressed={style === "concise"}
+          onClick={() => onStyleChange("concise")}
+          type="button"
+        >
+          Concise
+        </button>
+        <button
+          aria-pressed={style === "detailed"}
+          onClick={() => onStyleChange("detailed")}
+          type="button"
+        >
+          Detailed
+        </button>
+        <button
+          aria-pressed={style === "expert"}
+          onClick={() => onStyleChange("expert")}
+          type="button"
+        >
+          Expert
+        </button>
       </div>
 
       <div aria-label="Messages" role="log" style={styles.messages}>
-        {visibleMessages.map((message, index) => (
-          <article key={`${message.author}-${index}-${message.text}`} style={styles.message}>
-            <strong>{message.author}</strong>
-            <p>{message.text}</p>
+        {visibleMessages.map((message) => (
+          <article key={message.id} style={styles.message}>
+            <strong>{message.role === "user" ? "You" : "Assistant"}</strong>
+            <p>{message.content}</p>
+            {message.source_summary ? (
+              <small style={styles.sourceSummary}>Sources: {message.source_summary}</small>
+            ) : null}
           </article>
         ))}
       </div>
+
+      {error ? (
+        <p role="alert" style={styles.error}>
+          {error}
+        </p>
+      ) : null}
 
       <form aria-label="Send message" onSubmit={handleSubmit} style={styles.composer}>
         <label style={styles.messageField}>
@@ -68,7 +126,9 @@ export function ChatPanel() {
             value={draftMessage}
           />
         </label>
-        <button type="submit">Send</button>
+        <button disabled={isSending} type="submit">
+          {isSending ? "Sending..." : "Send"}
+        </button>
       </form>
     </section>
   );
@@ -115,6 +175,15 @@ const styles = {
     border: "1px solid #dde5ef",
     borderRadius: "12px",
     padding: "0.85rem",
+  },
+  sourceSummary: {
+    color: "#526070",
+    display: "block",
+    marginTop: "0.5rem",
+  },
+  error: {
+    color: "#b42318",
+    margin: 0,
   },
   composer: {
     alignItems: "end",
