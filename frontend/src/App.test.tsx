@@ -53,4 +53,36 @@ describe("App", () => {
     expect(screen.getByText("LLM: Gemma 4 via NVIDIA API")).toBeInTheDocument();
     expect(screen.getByLabelText("Message")).toBeInTheDocument();
   });
+
+  it("keeps the workspace mounted when the chat form is submitted", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ username: "tester" }),
+      }),
+    );
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("Username"), {
+      target: { value: "tester" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Company AI Test Lab")).toBeInTheDocument();
+    });
+
+    const form = screen.getByRole("form", { name: "Send message" });
+    const submitEvent = new Event("submit", { bubbles: true, cancelable: true });
+
+    const wasNotPrevented = form.dispatchEvent(submitEvent);
+
+    expect(wasNotPrevented).toBe(false);
+    expect(screen.getByText("Company AI Test Lab")).toBeInTheDocument();
+  });
 });

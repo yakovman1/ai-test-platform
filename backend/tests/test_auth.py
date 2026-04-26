@@ -61,6 +61,23 @@ def test_login_sets_auth_cookie(configured_settings: None) -> None:
     assert "HttpOnly" in response.headers["set-cookie"]
 
 
+def test_login_cookie_secure_flag_can_be_disabled_for_local_http(
+    configured_settings: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "false")
+    get_settings.cache_clear()
+    client = _client_with_user(password="correct-password")
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "tester", "password": "correct-password"},
+    )
+
+    assert response.status_code == 200
+    assert "Secure" not in response.headers["set-cookie"]
+
+
 def test_logout_clears_cookie() -> None:
     client = TestClient(create_app())
 

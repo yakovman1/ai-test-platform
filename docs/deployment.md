@@ -47,6 +47,7 @@ Update every placeholder value before deployment:
 - `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` configure the database container.
 - `DATABASE_URL` must use the Compose service host `postgres`, for example `postgresql+psycopg://USER:PASSWORD@postgres:5432/DB`.
 - `JWT_SECRET`, `INITIAL_USER_PASSWORD`, and `NVIDIA_API_KEY` must be replaced with real private values.
+- `AUTH_COOKIE_SECURE` should stay `true` for HTTPS deployments. Set it to `false` only for local HTTP testing.
 - `UPLOAD_MAX_MB` controls both backend upload validation and Caddy's request body limit before API traffic reaches the backend.
 - `BACKEND_CORS_ORIGINS` should include the public HTTPS origin, for example `https://ai.example.com`.
 

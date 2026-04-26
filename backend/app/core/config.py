@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     nvidia_api_key: str = Field(alias="NVIDIA_API_KEY")
     nvidia_embedding_model: str = Field(alias="NVIDIA_EMBEDDING_MODEL")
     nvidia_llm_model: str = Field(alias="NVIDIA_LLM_MODEL")
+    auth_cookie_secure: bool = Field(default=True, alias="AUTH_COOKIE_SECURE")
     upload_max_mb: int = Field(default=20, alias="UPLOAD_MAX_MB")
     rag_top_k: int = Field(default=5, alias="RAG_TOP_K")
     backend_cors_origins: str = Field(default="", alias="BACKEND_CORS_ORIGINS")
